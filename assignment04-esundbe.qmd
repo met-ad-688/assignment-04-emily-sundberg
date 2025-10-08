@@ -233,14 +233,16 @@ df_eda = df_eda.withColumn(
   "DURATION",
   when(col("DURATION").isNull(), med_duration)
 )
+
+
 ```
 
 ```{python}
 df_feature = df_eda.dropna(subset=[
-  "SALARY","MIN_YEARS_EXPERIENCE","MIN_EDULEVELS_NAME","EMPLOYMENT_TYPE_NAME","REMOTE_TYPE_NAME","IS_INTERNSHIP","COMPANY_IS_STAFFING", "DURATION"
+  "SALARY","MIN_YEARS_EXPERIENCE","MIN_EDULEVELS_NAME", "STATE_NAME","EMPLOYMENT_TYPE_NAME","REMOTE_TYPE_NAME","IS_INTERNSHIP","COMPANY_IS_STAFFING", "DURATION"
 ])
 
-categorical_cols = ["MIN_EDULEVELS_NAME", "EMPLOYMENT_TYPE_NAME", "REMOTE_TYPE_NAME"]
+categorical_cols = ["MIN_EDULEVELS_NAME", "EMPLOYMENT_TYPE_NAME", "REMOTE_TYPE_NAME","STATE_NAME"]
 
 indexers = [StringIndexer(inputCol=col, outputCol = f"{col}_idx", handleInvalid = 'skip')for col in categorical_cols]
 
@@ -254,9 +256,10 @@ assembler = VectorAssembler(
 )
 
 pipeline = Pipeline(stages = indexers + encoders + [assembler])
-data = pipeline.fit(df).transform(df)
+data = pipeline.fit(df_feature).transform(df_feature)
 
 data = data.withColumn("MIN_YEARS_EXPERIENCE_SQ", pow(col("MIN_YEARS_EXPERIENCE"),2))
+
 
 assembler_poly = VectorAssembler(
   inputCols=[
