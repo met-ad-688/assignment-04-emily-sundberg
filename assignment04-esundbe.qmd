@@ -1,4 +1,4 @@
----
+*---
 title: Assignment 04
 author:
   - name: Emily Sundberg
@@ -308,3 +308,38 @@ print((regression_test.count(), len(regression_test.columns)))
 ```
 
 # Linear Regression Model
+
+
+```{python}
+from pyspark.ml.regression import GeneralizedLinearRegression
+
+feature_names = assembler.getInputCols()
+
+glr = GeneralizedLinearRegression(
+  featuresCol="features",
+  labelCol="SALARY",
+  family = "gaussian",
+  link = "identity",
+  maxIter = 10,
+  regParam=0.3
+)
+
+glr_model = glr.fit(regression_train)
+summary = glr_model.summary
+
+print("\n --- Regression Summary ---")
+print("Coefficient Standard Errors:", [f"{val:.4f}" for val in summary.coefficientStandardErrors])
+print("T-Values:", [f"{val:.4f}" for val in summary.tValues])
+print("P-Values:",[f"{val:.4f}" for val in summary.pValues])
+
+
+print(f"\nDispersion: {summary.dispersion:.4f}")
+print(f"Null Deviance: {summary.nullDeviance:.4f}")
+print(f"Residual DF Null: {summary.residualDegreeOfFreedomNull}")
+print(f"Deviance: {summary.deviance:.4f}")
+print(f"Residual DF: {summary.residualDegreeOfFreedom}")
+print(f"AIC: {summary.aic:.4f}")
+```
+
+These values tell us that this model is not a good fit.
+
