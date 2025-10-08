@@ -148,18 +148,7 @@ df_eda.select([
   for c in df_eda.columns
 ]).show(truncate=False)
 
-categorical_cols = [
-  "STATE_NAME",
-  "REMOTE_TYPE_NAME",
-  "EMPLOYMENT_TYPE_NAME",
-  "MIN_EDULEVELS_NAME",
-  "COMPANY_IS_STAFFING",
-  "IS_INTERNSHIP"
-]
 
-for colname in categorical_cols:
-  print(f"\n----{colname} ----")
-  df_eda.select(colname).distinct().show(50,truncate = False)
 
 ```
 
@@ -197,6 +186,13 @@ df_eda = df_eda.withColumn(
     .otherwise(col("MIN_EDULEVELS_NAME"))
 )
 
+# State Name
+df_eda = df_eda.withColumn(
+  "STATE_NAME",
+    when(col("STATE_NAME").isNull(), "Unknown")
+    .otherwise(col("STATE_NAME"))
+)
+
 # Company Staffing
 df_eda = df_eda.withColumn(
   "COMPANY_IS_STAFFING",
@@ -224,6 +220,58 @@ for colname in categorical_cols:
   print(f"\n----{colname} ----")
   df_eda.select(colname).distinct().show(60,truncate = False)
 
+
+
+```
+
+# Feature Engineering
+
+```{python}
+med_duration = df_eda.approxQuantile("DURATION",[0.5], 0.01)[0]
+
+df_eda = df_eda.withColumn(
+  "DURATION",
+  when(col("DURATION").isNull(), med_duration)
+)
+```
+
+```{python}
+df_feature = df_eda.dropna(subset=[
+  "SALARY","MIN_YEARS_EXPERIENCE","MIN_EDULEVELS_NAME","EMPLOYMENT_TYPE_NAME","REMOTE_TYPE_NAME","IS_INTERNSHIP","COMPANY_IS_STAFFING", "DURATION"
+])
+
+categorical_cols = ["MIN_EDULEVELS_NAME", "EMPLOYMENT_TYPE_NAME", "REMOTE_TYPE_NAME"]
+
+indexers = [StringIndexer(inputCol=col, outputCol = f"{col}_idx", handleInvalid = 'skip')for col in categorical_cols]
+
+encoders = [OneHotEncoder(inputCol=f"{col}_idx",outputCol = f"{col}_vec")for col in categorical_cols]
+
+assembler = VectorAssembler(
+  inputCols = [
+    "MIN_YEARS_EXPERIENCE","DURATION","IS_INTERNSHIP", "COMPANY_IS_STAFFING"
+  ] + [f"{col}_vec" for col in categorical_cols],
+  outputCol= "features"
+)
+
+pipeline = Pipeline(stages = indexers + encoders + [assembler])
+data = pipeline.fit(df).transform(df)
+
+data = data.withColumn("MIN_YEARS_EXPERIENCE_SQ", pow(col("MIN_YEARS_EXPERIENCE"),2))
+
+assembler_poly = VectorAssembler(
+  inputCols=[
+    "MIN_YEARS_EXPERIENCE",
+    "MIN_YEARS_EXPERIENCE_SQ",
+    "DURATION",
+    "IS_INTERNSHIP",
+    "COMPANY_IS_STAFFING"
+  ]+[f"{col}_vec" for col in categorical_cols],
+  outputCol = "features_poly"
+)
+
+data = assembler_poly.transform(data)
+
+data.select("SALARY","features","features_poly").show(5, truncate = False)
 
 
 ```
