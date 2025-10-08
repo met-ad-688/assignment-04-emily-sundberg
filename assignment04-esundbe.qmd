@@ -227,12 +227,28 @@ for colname in categorical_cols:
 # Feature Engineering
 
 ```{python}
+
+from pyspark.sql.functions import col, when, expr
+
+
 med_duration = df_eda.approxQuantile("DURATION",[0.5], 0.01)[0]
 
 df_eda = df_eda.withColumn(
   "DURATION",
   when(col("DURATION").isNull(), med_duration)
 )
+
+overall_med_sal = df_eda.approxQuantile("SALARY", [0.5],0.01)[0]
+
+#print(overall_med_sal)
+
+median_sal_employment_type = df_eda.groupBy("EMPLOYMENT_TYPE_NAME").agg(expr("percentile_approx(SALARY,0.5)").alias("median_sal_employment_type"))
+
+df_eda = df_eda.join(median_sal_employment_type, on="EMPLOYMENT_TYPE_NAME", how="left")
+
+df_eda = df_eda.withColumn("SALARY", when(col("SALARY").isNull(),
+  when(col("median_sal_employment_type").isNotNull(), col("median_sal_employment_type"))
+  .otherwise(overall_med_sal)).otherwise(col("SALARY")))
 
 
 ```
@@ -278,3 +294,17 @@ data.select("SALARY","features","features_poly").show(5, truncate = False)
 
 
 ```
+
+# Train/Test Split
+
+
+```{python}
+regression_train, regression_test = data.randomSplit([0.75,0.25],seed=42)
+
+print((data.count(), len(data.columns)))
+print((regression_train.count(), len(regression_train.columns)))
+print((regression_test.count(), len(regression_test.columns)))
+
+```
+
+# Linear Regression Model
