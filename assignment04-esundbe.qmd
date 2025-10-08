@@ -41,9 +41,188 @@ spark = SparkSession.builder.appName("LightcastData").getOrCreate()
 df = spark.read.option("header", "true").option("inferSchema", "true").option("multiLine","true").option("escape", "\"").csv("./data/lightcast_job_postings.csv")
 
 # Show Schema and Sample Data
-print("---This is Diagnostic check, No need to print it in the final doc---")
+#print("---This is Diagnostic check, No need to print it in the final doc---")
 
 # df.printSchema() # comment this line when rendering the submission
 df.show(5)
 ```
 
+# create eda data frame
+```{python}
+
+from pyspark.sql.functions import col, pow
+from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler
+from pyspark.ml import Pipeline
+
+eda_cols = [
+  "SALARY",
+  "MIN_YEARS_EXPERIENCE",
+  "DURATION",
+  "COMPANY_IS_STAFFING",
+  "IS_INTERNSHIP",
+  "STATE_NAME",
+  "REMOTE_TYPE_NAME",
+  "EMPLOYMENT_TYPE_NAME",
+  "MIN_EDULEVELS_NAME"
+]
+
+df_eda = df.select(eda_cols)
+df_eda.show(5)
+
+```
+
+# Dealing With Missing Data
+
+## Analyzing the Missing Data
+### Bar Chart
+
+```{python}
+from pyspark.sql.functions import col, sum as spark_sum, when, trim, length
+import hvplot.pandas
+
+missing_df = df_eda.select([
+  spark_sum(
+    when(col(c).isNull() | (length(trim(col(c)))== 0),1).otherwise(0)).alias(c)
+    for c in df_eda.columns
+])
+
+missing_pd = missing_df.toPandas().T.reset_index()
+missing_pd.columns = ["column", "missing_count"]
+
+total_rows = df_eda.count()
+
+missing_pd["missing_percent"]=100*missing_pd["missing_count"]/total_rows
+
+missing_pd.sort_values("missing_percent", ascending=False).hvplot.bar(
+  x="column",
+  y="missing_percent",
+  rot=90,
+  title="Percentage of Missing Values by Column",
+  height = 600,
+  width = 900,
+  ylabel = "Missing Percentage (%)",
+  xlabel = "Features"
+).opts(xrotation=45)
+
+#missing_pd.head()
+
+```
+
+### Heatmap
+
+
+```{python}
+import pandas as pd
+
+df_sample = df_eda.sample(fraction = .05, seed = 42).toPandas()
+
+missing_mask = df_sample.isnull()
+
+missing_long = (
+  missing_mask.reset_index()
+  .melt(id_vars = "index", var_name = "column", value_name = "is_missing")
+)
+
+missing_long["is_missing"] = missing_long["is_missing"].astype(int)
+
+missing_long.hvplot.heatmap(
+  x="column",
+  y="index",
+  C = "is_missing",
+  cmap = "Blues",
+  width = 900,
+  height = 500,
+  title = "Heatmap of Missing Values (5%)"
+).opts(xrotation=45)
+
+```
+
+### Unique Values
+
+```{python}
+from pyspark.sql.functions import countDistinct
+
+df_eda.select([
+  countDistinct(c).alias(c+"_nunique")
+  for c in df_eda.columns
+]).show(truncate=False)
+
+categorical_cols = [
+  "STATE_NAME",
+  "REMOTE_TYPE_NAME",
+  "EMPLOYMENT_TYPE_NAME",
+  "MIN_EDULEVELS_NAME",
+  "COMPANY_IS_STAFFING",
+  "IS_INTERNSHIP"
+]
+
+for colname in categorical_cols:
+  print(f"\n----{colname} ----")
+  df_eda.select(colname).distinct().show(50,truncate = False)
+
+```
+
+### Replacing Null Values and Errors
+
+
+```{python}
+
+# REMOTE TYPE NAME
+df_eda = df_eda.withColumn(
+  "REMOTE_TYPE_NAME",
+    when(col("REMOTE_TYPE_NAME") == "Remote","Remote")
+    .when(col("REMOTE_TYPE_NAME") == "[None]","In-Person")
+    .when(col("REMOTE_TYPE_NAME") == "Not Remote","In-Person")
+    .when(col("REMOTE_TYPE_NAME") == "Hybrid Remote","Hybrid")
+    .when(col("REMOTE_TYPE_NAME").isNull(), "In-Person")
+    .otherwise(col("REMOTE_TYPE_NAME"))
+)
+
+# EMPLOYMENT TYPE NAME
+
+df_eda = df_eda.withColumn(
+  "EMPLOYMENT_TYPE_NAME",
+    when(col("EMPLOYMENT_TYPE_NAME") == "Part-time / full-time","Flexible")
+    .when(col("EMPLOYMENT_TYPE_NAME") == "Part-time (â‰¤ 32 hours)","Part-Time")
+    .when(col("EMPLOYMENT_TYPE_NAME") == "Full-time (> 32 hours)","Full-Time")
+    .when(col("EMPLOYMENT_TYPE_NAME").isNull(), "Full-Time")
+    .otherwise(col("EMPLOYMENT_TYPE_NAME"))
+)
+
+# Minimum Education Levels
+df_eda = df_eda.withColumn(
+  "MIN_EDULEVELS_NAME",
+    when(col("MIN_EDULEVELS_NAME").isNull(), "No Education Listed")
+    .otherwise(col("MIN_EDULEVELS_NAME"))
+)
+
+# Company Staffing
+df_eda = df_eda.withColumn(
+  "COMPANY_IS_STAFFING",
+    when(col("COMPANY_IS_STAFFING").isNull(), False)
+    .otherwise(col("COMPANY_IS_STAFFING"))
+)
+
+# Internship
+df_eda = df_eda.withColumn(
+  "IS_INTERNSHIP",
+    when(col("IS_INTERNSHIP").isNull(), False)
+    .otherwise(col("IS_INTERNSHIP"))
+)
+
+categorical_cols = [
+  "STATE_NAME",
+  "REMOTE_TYPE_NAME",
+  "EMPLOYMENT_TYPE_NAME",
+  "MIN_EDULEVELS_NAME",
+  "COMPANY_IS_STAFFING",
+  "IS_INTERNSHIP"
+]
+
+for colname in categorical_cols:
+  print(f"\n----{colname} ----")
+  df_eda.select(colname).distinct().show(60,truncate = False)
+
+
+
+```
