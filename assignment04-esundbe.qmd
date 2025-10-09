@@ -343,7 +343,7 @@ se = list(summary.coefficientStandardErrors)
 tvals = list(summary.tValues)
 pvals = list(summary.pValues)
 
-print("features", len(features))
+print("features", len(feature_names))
 print("coefs", len(coefs))
 print("se", len(se))
 print("tvals", len(tvals))
@@ -360,7 +360,7 @@ coef_table = pd.DataFrame({
 coef_table.to_csv("glr_summary.csv", index=False)
 
 
-coef_table.head(5)
+print(coef_table)
 ``` 
 
 
