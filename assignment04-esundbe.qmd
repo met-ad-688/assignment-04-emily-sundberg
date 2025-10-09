@@ -277,22 +277,9 @@ data = pipeline.fit(df_feature).transform(df_feature)
 data = data.withColumn("MIN_YEARS_EXPERIENCE_SQ", pow(col("MIN_YEARS_EXPERIENCE"),2))
 
 
-assembler_poly = VectorAssembler(
-  inputCols=[
-    "MIN_YEARS_EXPERIENCE",
-    "MIN_YEARS_EXPERIENCE_SQ",
-    "DURATION",
-    "IS_INTERNSHIP",
-    "COMPANY_IS_STAFFING"
-  ]+[f"{col}_vec" for col in categorical_cols],
-  outputCol = "features_poly"
-)
-
-data = assembler_poly.transform(data)
-
-data.select("SALARY","features","features_poly").show(5, truncate = False)
 
 
+data.select("SALARY","features").show(5, truncate = False)
 ```
 
 # Train/Test Split
@@ -343,3 +330,60 @@ print(f"AIC: {summary.aic:.4f}")
 
 These values tell us that this model is not a good fit.
 
+
+```{python}
+import pandas as pd
+from tabulate import tabulate
+import pandas as pd 
+from IPython.display import HTML
+
+feature_names = summary._call_java("featureNames")
+coefs = [glr_model.intercept] +list(glr_model.coefficients)
+se = list(summary.coefficientStandardErrors)
+tvals = list(summary.tValues)
+pvals = list(summary.pValues)
+
+print("features", len(features))
+print("coefs", len(coefs))
+print("se", len(se))
+print("tvals", len(tvals))
+print("pvals", len(pvals))
+
+coef_table = pd.DataFrame({
+  "Feature": ["Intercept"]+feature_names,
+  "Estimate": [f"{v:.4f}" if v is not None else None for v in coefs],
+  "Std Error": [f"{v:.4f}" if v is not None else None for v in se],
+  "t-stat": [f"{v:.4f}" if v is not None else None for v in tvals],
+  "P-Value": [f"{v:.4f}" if v is not None else None for v in pvals],
+})
+
+coef_table.to_csv("glr_summary.csv", index=False)
+
+
+coef_table.head(5)
+``` 
+
+
+
+
+
+
+
+
+# Poly Assembler
+```{python}
+assembler_poly = VectorAssembler(
+  inputCols=[
+    "MIN_YEARS_EXPERIENCE",
+    "MIN_YEARS_EXPERIENCE_SQ",
+    "DURATION",
+    "IS_INTERNSHIP",
+    "COMPANY_IS_STAFFING"
+  ]+[f"{col}_vec" for col in categorical_cols],
+  outputCol = "features_poly"
+)
+
+data = assembler_poly.transform(data)
+
+data.select("SALARY","features","features_poly").show(5, truncate = False)
+```
