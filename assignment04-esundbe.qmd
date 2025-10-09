@@ -363,15 +363,13 @@ coef_table.to_csv("glr_summary.csv", index=False)
 print(coef_table)
 ``` 
 
+# Polynomial Regression Model
 
-
-
-
-
-
-
-# Poly Assembler
 ```{python}
+
+poly_data = data.withColumn("MIN_YEARS_EXPERIENCE_SQ", pow(col("MIN_YEARS_EXPERIENCE"),2))
+
+
 assembler_poly = VectorAssembler(
   inputCols=[
     "MIN_YEARS_EXPERIENCE",
@@ -380,10 +378,207 @@ assembler_poly = VectorAssembler(
     "IS_INTERNSHIP",
     "COMPANY_IS_STAFFING"
   ]+[f"{col}_vec" for col in categorical_cols],
-  outputCol = "features_poly"
+  outputCol = "poly_features"
 )
 
-data = assembler_poly.transform(data)
+poly_data = assembler_poly.transform(poly_data)
 
-data.select("SALARY","features","features_poly").show(5, truncate = False)
+poly_data.select("SALARY","features","poly_features").show(5, truncate = False)
+```
+
+## Split Data
+
+```{python}
+regression_train, regression_test = poly_data.randomSplit([0.75,0.25], seed=42)
+print((poly_data.count(), len(poly_data.columns)))
+print((regression_train.count(), len(regression_train.columns)))
+print((regression_test.count(), len(regression_test.columns)))
+
+
+```
+
+## regression model
+```{python}
+from pyspark.ml.regression import GeneralizedLinearRegression
+
+feature_names = assembler.getInputCols()
+
+poly_glr = GeneralizedLinearRegression(
+  featuresCol="features",
+  labelCol="SALARY",
+  family = "gaussian",
+  link = "identity",
+  maxIter = 10,
+  regParam=0.3
+)
+
+poly_glr_model = poly_glr.fit(regression_train)
+summary = poly_glr_model.summary
+
+print("\n --- Regression Summary ---")
+print("Coefficient Standard Errors:", [f"{val:.4f}" for val in summary.coefficientStandardErrors])
+print("T-Values:", [f"{val:.4f}" for val in summary.tValues])
+print("P-Values:",[f"{val:.4f}" for val in summary.pValues])
+
+
+print(f"\nDispersion: {summary.dispersion:.4f}")
+print(f"Null Deviance: {summary.nullDeviance:.4f}")
+print(f"Residual DF Null: {summary.residualDegreeOfFreedomNull}")
+print(f"Deviance: {summary.deviance:.4f}")
+print(f"Residual DF: {summary.residualDegreeOfFreedom}")
+print(f"AIC: {summary.aic:.4f}")
+```
+```{python}
+import pandas as pd
+from tabulate import tabulate
+import pandas as pd 
+from IPython.display import HTML
+
+poly_feature_names = summary._call_java("featureNames")
+poly_coefs = [poly_glr_model.intercept] +list(poly_glr_model.coefficients)
+poly_se = list(summary.coefficientStandardErrors)
+poly_tvals = list(summary.tValues)
+poly_pvals = list(summary.pValues)
+
+print("features", len(poly_feature_names))
+print("coefs", len(poly_coefs))
+print("se", len(poly_se))
+print("tvals", len(poly_tvals))
+print("pvals", len(poly_pvals))
+
+coef_table = pd.DataFrame({
+  "Feature": ["Intercept"]+poly_feature_names,
+  "Estimate": [f"{v:.4f}" if v is not None else None for v in coefs],
+  "Std Error": [f"{v:.4f}" if v is not None else None for v in se],
+  "t-stat": [f"{v:.4f}" if v is not None else None for v in tvals],
+  "P-Value": [f"{v:.4f}" if v is not None else None for v in pvals],
+})
+
+coef_table.to_csv("poly_glr_summary.csv", index=False)
+
+
+print(coef_table)
+``` 
+
+# Diagnostics
+```{python}
+
+#Used AI, prompt and response are in the AI.txt file
+
+# ==========================================================
+# Diagnostic Plots for Linear Regression Model
+# ==========================================================
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy.stats as stats
+import pandas as pd
+
+# Generate predictions
+predictions = glr_model.transform(regression_test)
+
+# Convert to Pandas
+pred_pd = predictions.select("SALARY", "prediction").toPandas()
+
+# Compute residuals
+pred_pd["residuals"] = pred_pd["SALARY"] - pred_pd["prediction"]
+
+# Set up 2x2 plot grid
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+fig.suptitle("Linear Regression Diagnostic Plots", fontsize=16, y=1.02)
+
+# 1️⃣ Predicted vs Actual
+sns.scatterplot(
+    x="SALARY", y="prediction", data=pred_pd,
+    ax=axes[0, 0], alpha=0.6, edgecolor=None
+)
+axes[0, 0].plot(
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    color="red", linestyle="--", linewidth=1.2
+)
+axes[0, 0].set_title("Predicted vs Actual")
+axes[0, 0].set_xlabel("Actual Salary")
+axes[0, 0].set_ylabel("Predicted Salary")
+
+# 2️⃣ Residuals vs Predicted
+sns.scatterplot(
+    x="prediction", y="residuals", data=pred_pd,
+    ax=axes[0, 1], alpha=0.6, edgecolor=None
+)
+axes[0, 1].axhline(0, color="red", linestyle="--", linewidth=1.2)
+axes[0, 1].set_title("Residuals vs Predicted")
+axes[0, 1].set_xlabel("Predicted Salary")
+axes[0, 1].set_ylabel("Residuals")
+
+# 3️⃣ Histogram of Residuals
+sns.histplot(pred_pd["residuals"], bins=30, kde=True, ax=axes[1, 0], color="skyblue")
+axes[1, 0].axvline(0, color="red", linestyle="--", linewidth=1.2)
+axes[1, 0].set_title("Histogram of Residuals")
+axes[1, 0].set_xlabel("Residual Value")
+axes[1, 0].set_ylabel("Frequency")
+
+# 4️⃣ QQ Plot of Residuals
+stats.probplot(pred_pd["residuals"], dist="norm", plot=axes[1, 1])
+axes[1, 1].set_title("QQ Plot of Residuals")
+
+plt.tight_layout()
+plt.show()
+```
+
+# Model Evaluation
+
+
+```{python}
+# ==========================================================
+# 6. Model Evaluation
+# ==========================================================
+
+from pyspark.ml.evaluation import RegressionEvaluator
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+# --- Evaluate on test data ---
+evaluator_r2 = RegressionEvaluator(
+    labelCol="SALARY", predictionCol="prediction", metricName="r2"
+)
+evaluator_rmse = RegressionEvaluator(
+    labelCol="SALARY", predictionCol="prediction", metricName="rmse"
+)
+
+r2 = evaluator_r2.evaluate(predictions)
+rmse = evaluator_rmse.evaluate(predictions)
+
+print("===============================================")
+print("Model Evaluation Metrics")
+print(f"R² (Coefficient of Determination): {r2:.4f}")
+print(f"RMSE (Root Mean Squared Error):   {rmse:.2f}")
+print("===============================================")
+
+# --- Convert predictions to pandas for plotting ---
+pred_pd = predictions.select("SALARY", "prediction").toPandas()
+
+# --- Predicted vs Actual Plot ---
+plt.figure(figsize=(8, 6))
+sns.scatterplot(
+    x="SALARY", y="prediction", data=pred_pd,
+    alpha=0.6, color="steelblue", edgecolor=None, label="Predicted"
+)
+
+# Ideal fit line (y = x)
+plt.plot(
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    color="red", linestyle="--", linewidth=1.5, label="Ideal Fit (y = x)"
+)
+
+plt.title("Model Evaluation: Predicted vs Actual Salary", fontsize=14)
+plt.xlabel("Actual Salary")
+plt.ylabel("Predicted Salary")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
 ```

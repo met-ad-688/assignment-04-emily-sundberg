@@ -1,0 +1,180 @@
+Input: 
+considering this code already written, please create a python script that meets the following elements: Diagnostic plots are essential for evaluating the performance of regression models. In this section, we will create several diagnostic plots to assess the linear regression model’s assumptions and performance. There are four (2*2 grid) main plots we will create, you can use seaborn or matplotlib for this: Predicted vs Actual Plot Residuals vs Predicted Plot Histogram of Residuals QQ Plot of Residuals
+
+
+output:
+Perfect — since your linear regression model (glr_model) is already trained on Spark data, you can extract predictions and residuals into a Pandas DataFrame for visualization with matplotlib and seaborn.
+Below is a Python script you can append (or run separately) after your model fitting code.
+It creates the four diagnostic plots in a 2×2 grid:
+ 
+# ==========================================================
+# Diagnostic Plots for Linear Regression Model
+# ==========================================================
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy.stats as stats
+import pandas as pd
+
+# Generate predictions
+predictions = glr_model.transform(regression_test)
+
+# Convert to Pandas
+pred_pd = predictions.select("SALARY", "prediction").toPandas()
+
+# Compute residuals
+pred_pd["residuals"] = pred_pd["SALARY"] - pred_pd["prediction"]
+
+# Set up 2x2 plot grid
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+fig.suptitle("Linear Regression Diagnostic Plots", fontsize=16, y=1.02)
+
+# 1️⃣ Predicted vs Actual
+sns.scatterplot(
+    x="SALARY", y="prediction", data=pred_pd,
+    ax=axes[0, 0], alpha=0.6, edgecolor=None
+)
+axes[0, 0].plot(
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    color="red", linestyle="--", linewidth=1.2
+)
+axes[0, 0].set_title("Predicted vs Actual")
+axes[0, 0].set_xlabel("Actual Salary")
+axes[0, 0].set_ylabel("Predicted Salary")
+
+# 2️⃣ Residuals vs Predicted
+sns.scatterplot(
+    x="prediction", y="residuals", data=pred_pd,
+    ax=axes[0, 1], alpha=0.6, edgecolor=None
+)
+axes[0, 1].axhline(0, color="red", linestyle="--", linewidth=1.2)
+axes[0, 1].set_title("Residuals vs Predicted")
+axes[0, 1].set_xlabel("Predicted Salary")
+axes[0, 1].set_ylabel("Residuals")
+
+# 3️⃣ Histogram of Residuals
+sns.histplot(pred_pd["residuals"], bins=30, kde=True, ax=axes[1, 0], color="skyblue")
+axes[1, 0].axvline(0, color="red", linestyle="--", linewidth=1.2)
+axes[1, 0].set_title("Histogram of Residuals")
+axes[1, 0].set_xlabel("Residual Value")
+axes[1, 0].set_ylabel("Frequency")
+
+# 4️⃣ QQ Plot of Residuals
+stats.probplot(pred_pd["residuals"], dist="norm", plot=axes[1, 1])
+axes[1, 1].set_title("QQ Plot of Residuals")
+
+plt.tight_layout()
+plt.show()
+ 
+✅ What this code does:
+•	Extracts predictions from your Spark GeneralizedLinearRegressionModel.
+•	Computes residuals (Actual - Predicted).
+•	Creates four key diagnostic plots to visually check:
+1.	Predicted vs Actual → Linearity and bias.
+2.	Residuals vs Predicted → Homoscedasticity (constant variance).
+3.	Histogram of Residuals → Normality of residuals.
+4.	QQ Plot → Confirms normal distribution of residuals.
+ 
+💡 Tips for Report Use
+•	You can save the figure to file (for Quarto or DOCX rendering) with:
+•	plt.savefig("diagnostic_plots.png", dpi=300, bbox_inches="tight")
+•	To adapt for the polynomial model, just replace:
+•	predictions = glr_model.transform(regression_test)
+with:
+predictions = poly_glr_model.transform(regression_test)
+Would you like me to modify this so that it automatically saves all four plots separately (e.g., as plot1.png, plot2.png, etc.) for embedding in your Quarto report?
+
+
+Input:
+Great! Thank you! Now, can you please write a script to do the following:6 Evaluation The evaluation of the model is crucial to understand its performance. In this section, we will calculate and visualize the following metrics: R² (Coefficient of Determination): Indicates how well the model explains the variance in the target variable. RMSE (Root Mean Squared Error): Measures the average magnitude of the errors between predicted and actual values. 6.1 Model Evaluation Plot Display the predicted vs actual salary plot with a red line indicating the ideal fit (y=x). Use seaborn or matplotlib to create the plot. Customize the plot with appropriate titles, labels, and legends. Describe the plot in a few sentences, highlighting key insights and observations.
+
+
+Output:
+
+Perfect 👍 — since your Spark model is already fitted and you’ve got the predictions ready, here’s a clean, ready-to-run script you can add right after your diagnostic plots section.
+
+It computes R² and RMSE for your model and produces a Predicted vs Actual plot with a red 
+𝑦
+=
+𝑥
+y=x reference line.
+
+# ==========================================================
+# 6. Model Evaluation
+# ==========================================================
+
+from pyspark.ml.evaluation import RegressionEvaluator
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+# --- Evaluate on test data ---
+evaluator_r2 = RegressionEvaluator(
+    labelCol="SALARY", predictionCol="prediction", metricName="r2"
+)
+evaluator_rmse = RegressionEvaluator(
+    labelCol="SALARY", predictionCol="prediction", metricName="rmse"
+)
+
+r2 = evaluator_r2.evaluate(predictions)
+rmse = evaluator_rmse.evaluate(predictions)
+
+print("===============================================")
+print("Model Evaluation Metrics")
+print(f"R² (Coefficient of Determination): {r2:.4f}")
+print(f"RMSE (Root Mean Squared Error):   {rmse:.2f}")
+print("===============================================")
+
+# --- Convert predictions to pandas for plotting ---
+pred_pd = predictions.select("SALARY", "prediction").toPandas()
+
+# --- Predicted vs Actual Plot ---
+plt.figure(figsize=(8, 6))
+sns.scatterplot(
+    x="SALARY", y="prediction", data=pred_pd,
+    alpha=0.6, color="steelblue", edgecolor=None, label="Predicted"
+)
+
+# Ideal fit line (y = x)
+plt.plot(
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    [pred_pd["SALARY"].min(), pred_pd["SALARY"].max()],
+    color="red", linestyle="--", linewidth=1.5, label="Ideal Fit (y = x)"
+)
+
+plt.title("Model Evaluation: Predicted vs Actual Salary", fontsize=14)
+plt.xlabel("Actual Salary")
+plt.ylabel("Predicted Salary")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+# --- Optional: Save figure for Quarto embedding ---
+# plt.savefig("model_evaluation_plot.png", dpi=300, bbox_inches="tight")
+
+# --- Interpretation ---
+print("""
+Interpretation:
+The plot above compares predicted salaries to the actual observed salaries.
+Points lying close to the red dashed line indicate accurate predictions.
+If points deviate widely from the line, it suggests prediction errors or that
+the model may not fully capture the variability in salary.
+An R² closer to 1 implies better explanatory power, while a lower R² combined
+with a high RMSE suggests limited model accuracy.
+""")
+
+✅ What This Script Does
+
+Computes R² and RMSE using Spark’s RegressionEvaluator.
+
+Plots predicted vs actual values using Seaborn for easy readability.
+
+Adds an ideal-fit line (y=x) in red for visual reference.
+
+Prints a short textual interpretation for inclusion in your report.
+
+(Optional) You can uncomment the plt.savefig() line to save the image for Quarto embedding.
+
+Would you like me to adapt this so it evaluates both the linear and polynomial models side-by-side on the same plot for comparison (e.g., blue vs orange points)?
